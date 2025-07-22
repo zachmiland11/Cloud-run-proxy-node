@@ -100,3 +100,6 @@ It will automatically look for credentials in your environment.
 The most common way to set this up locally is by running gcloud auth application-default login.
 
 Ensure the authenticated principal has the roles/run.viewer role (or equivalent custom role) on the Cloud Run service, and the Service Account Token Creator role if your Cloud Run service is configured to use a specific service account that requires token creation permissions.
+
+License
+This project is licensed under the Apache 2.0 License - see the LICENSE file for details.
