@@ -1,89 +1,102 @@
-Cloud Run Node Proxy
-This Node.js script acts as a lightweight proxy for invoking IAM-protected Google Cloud Run services. It automatically handles OIDC (OpenID Connect) token generation and refreshing using your gcloud application default credentials or a service account, ensuring secure communication with your Cloud Run services without needing to manually manage authentication tokens.
-
-The proxy reads a request payload from its standard input (stdin), forwards it to the specified Cloud Run service with the necessary OIDC Authorization header, and then writes the service's response to its standard output (stdout). Error messages and debugging information are printed to standard error (stderr).
+Cloud Run Proxy (Node.js)
+This Node.js script acts as a local HTTP proxy that securely forwards requests to a Google Cloud Run service, automatically handling OpenID Connect (OIDC) token authentication. It's designed to simplify local development and testing with Cloud Run services that require OIDC-authenticated access.
 
 Features
-Automatic OIDC Token Management: Fetches and refreshes OIDC tokens transparently.
+OIDC Token Management: Automatically fetches and refreshes OIDC identity tokens using Google's Application Default Credentials (ADC).
 
-Secure Invocation: Adds a Bearer token to the Authorization header for IAM-protected Cloud Run services.
+Transparent Proxying: Forwards incoming HTTP requests to your specified Cloud Run service URL.
 
-Simple Interface: Reads from stdin and writes to stdout, making it easy to integrate with other command-line tools or scripts.
+Header Propagation: Copies most headers from the client's request to the Cloud Run service, ensuring proper request context.
 
-Error Handling: Provides informative error messages for authentication failures or network issues.
+Host Header Override: Correctly sets the Host header for the Cloud Run service.
+
+Custom Authorization Header: Allows specifying a custom header name for the OIDC bearer token, useful for services that expect a different header than Authorization.
+
+User-Agent Customization: Prepends a custom User-Agent string to outgoing requests.
+
+Redirect Handling: Rewrites Location headers in redirects to point back to the local proxy address.
+
+Graceful Shutdown: Handles SIGINT and SIGTERM signals for clean server termination.
 
 Prerequisites
-Before using this proxy, ensure you have the following installed:
+Before you can use this proxy, you'll need:
 
-Node.js: Version 14 or higher is recommended.
+Node.js (v14 or higher): Ensure Node.js is installed on your system.
 
-npm (Node Package Manager): Usually comes bundled with Node.js.
+Google Cloud SDK (gcloud): Install and configure the Google Cloud SDK.
 
-Google Cloud SDK (gcloud): Used for fetching application default credentials.
+Authenticated gcloud CLI: Your gcloud CLI must be authenticated with credentials that have permission to create OIDC tokens for your Cloud Run service.
 
-Authenticate your gcloud CLI:
+Run gcloud auth application-default login to set up Application Default Credentials. This proxy relies on these credentials to obtain the necessary OIDC tokens.
 
-gcloud auth application-default login
-
-
-Alternatively, you can set the GOOGLE_APPLICATION_CREDENTIALS environment variable to the path of a service account key file.
+Access to a Cloud Run Service: You need the URL of a deployed Cloud Run service configured to require authentication.
 
 Installation
-Save the script: Save the provided Node.js code into a file named cloud-run-oidc-proxy.js.
+Clone the repository (or copy the files):
 
-Install dependencies: Navigate to the directory where you saved cloud-run-oidc-proxy.js in your terminal and install the required Node.js package:
+git clone [https://github.com/your-repo/cloud-run-oidc-proxy-node.git](https://github.com/your-repo/cloud-run-oidc-proxy-node.git)
+cd cloud-run-oidc-proxy-node
 
-npm install google-auth-library
+(Replace your-repo with your actual repository details if applicable)
 
+Install dependencies:
+
+npm install
 
 Usage
-The proxy expects the target Cloud Run service URL as its first command-line argument. It reads your raw request body in JSON format from its standard input (stdin). Once stdin is closed (e.g., after a pipe sends all its data), it will send the accumulated data as a POST request to your Cloud Run service, setting the Content-Type header to application/json.
+Run the proxy script from your terminal:
 
-node cloud-run-oidc-proxy.js <YOUR_CLOUD_RUN_SERVICE_URL>
+node cloud-run-oidc-proxy.js --host <CLOUD_RUN_SERVICE_URL> [options]
 
+Arguments and Options
+--host <CLOUD_RUN_SERVICE_URL> (Required):
+The full URL of your Cloud Run service (e.g., https://your-service-xxxx.run.app). This URL is also used as the audience (aud) for the OIDC token.
 
-Example
-This proxy is versatile and can be used with various Cloud Run services. As an example, let's consider a service deployed at https://my-tool-service-abcdefgh-uc.a.run.app that expects a JSON payload and returns a JSON response. Note that the proxy currently sends requests with a Content-Type of application/json.
+--bind <host:port> (Optional):
+The local address and port on which the proxy server will listen.
 
-You can invoke it by piping your JSON request body to it, like this:
+Default: 127.0.0.1:8080
 
-echo '{"query": "What is the weather today?"}' | node cloud-run-oidc-proxy.js https://my-tool-service-abcdefgh-uc.a.run.app
+Example: --bind 0.0.0.0:3000 (to listen on all interfaces on port 3000)
 
+--prepend-user-agent (Optional):
+If present, the proxy will prepend its own User-Agent string (cloud-run-oidc-proxy-nodejs/1.0.0) to any existing User-Agent header from the client.
 
-Explanation:
+Default: true (if flag is present) / false (if flag is omitted or --no-prepend-user-agent is used)
 
-echo '{"query": "What is the weather today?"}': This command outputs your JSON request body string to stdout.
+--no-prepend-user-agent (Optional):
+Explicitly disables the prepending of the proxy's User-Agent string.
 
-|: This is a pipe, which takes the stdout of the echo command and feeds it into the stdin of the node command.
+--authorization-header <header-name> (Optional):
+Specifies the name of the HTTP header to use for sending the Bearer OIDC token to the Cloud Run service.
 
-node cloud-run-oidc-proxy.js https://my-tool-service-abcdefgh-uc.a.run.app: This executes the proxy script, telling it to forward the stdin content to your Cloud Run service URL.
+Default: X-Serverless-Authorization (matches the Go Cloud Run Proxy behavior)
 
-The proxy will then:
+Example: --authorization-header Authorization (to use the standard Authorization header)
 
-Fetch an OIDC token using your active gcloud credentials.
+Examples
+Basic Usage:
+Proxy requests from http://127.0.0.1:8080 to your Cloud Run service at https://my-service-xxxx.run.app.
 
-Create a POST request to https://my-tool-service-abcdefgh-uc.a.run.app.
+node cloud-run-oidc-proxy.js --host [https://my-service-xxxx.run.app](https://my-service-xxxx.run.app)
 
-Add the Authorization: Bearer <OIDC_TOKEN> header.
+Custom Bind Address:
+Proxy requests from http://localhost:3000.
 
-Set the Content-Type: application/json header.
+node cloud-run-oidc-proxy.js --host [https://my-service-xxxx.run.app](https://my-service-xxxx.run.app) --bind 127.0.0.1:3000
 
-Send the {"query": "What is the weather today?"} as the request body.
+Using Standard Authorization Header:
+If your Cloud Run service expects the token in the Authorization header.
 
-Receive the response from your Cloud Run service.
+node cloud-run-oidc-proxy.js --host [https://my-service-xxxx.run.app](https://my-service-xxxx.run.app) --authorization-header Authorization
 
-Print the service's response to your console (stdout).
+After starting the proxy, you can make requests to http://<your-bind-address>:<your-bind-port> (e.g., http://127.0.0.1:8080/my-endpoint), and the proxy will handle the authentication and forwarding to your Cloud Run service.
 
-Debugging
-The proxy prints status messages and errors to stderr. You can redirect stderr to a file if you want to inspect them without cluttering your main output:
+Authentication
+This proxy leverages the google-auth-library to obtain OIDC tokens. It primarily relies on Google Application Default Credentials (ADC). This means:
 
-echo '{"data": "some_input"}' | node cloud-run-oidc-proxy.js https://your-service-url 2> proxy_debug.log
+It will automatically look for credentials in your environment.
 
+The most common way to set this up locally is by running gcloud auth application-default login.
 
-This will put the Cloud Run service's response on your console, and all proxy-related debug messages in proxy_debug.log.
-
-Error Handling
-If the proxy encounters an error (e.g., unable to fetch a token, network issues, or malformed JSON from Cloud Run), it will print an error message to stderr and typically exit with a non-zero status code. In some cases, it will also print a structured JSON error to stdout to signal an issue to the calling client.
-
-Customizing Content Type
-By default, the proxy sends requests with the Content-Type of application/json header. If your Cloud Run service expects a different content type (e.g., text/plain, application/xml), you will need to modify the requestOptions.headers object within the startProxy function in the cloud-run-oidc-proxy.js script to reflect the correct Content-Type for your service
+Ensure the authenticated principal has the roles/run.viewer role (or equivalent custom role) on the Cloud Run service, and the Service Account Token Creator role if your Cloud Run service is configured to use a specific service account that requires token creation permissions.
