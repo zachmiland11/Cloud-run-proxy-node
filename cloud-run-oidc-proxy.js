@@ -290,7 +290,8 @@ export function startProxyServer(targetUrl, bindAddress, prependUserAgent, autho
 }
 
 // Main execution block - only runs if executed directly (not imported as a module)
-if (require.main === module) { // More robust check than NODE_ENV for direct execution
+// This pattern checks if the current module is the entry point in ES module scope.
+if (import.meta.url === new URL(process.argv[1], 'file:').href) {
   (async () => {
     const args = process.argv.slice(2);
     let targetCloudRunUrl = '';
